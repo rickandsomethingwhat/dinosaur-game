@@ -1,0 +1,298 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#24170f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="format-detection" content="telephone=no" />
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <title>小恐龙无限闯关</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg-1: #fff0c9;
+      --bg-2: #f0b160;
+      --panel: rgba(42, 28, 18, 0.92);
+      --panel-soft: rgba(255, 245, 219, 0.09);
+      --panel-border: rgba(255, 235, 190, 0.16);
+      --text: #fff3dc;
+      --muted: rgba(255, 236, 198, 0.72);
+      --easy: #58c987;
+      --normal: #f1b84b;
+      --hard: #ff7a48;
+      --insane: #ff3c8f;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(255, 255, 255, 0.9), transparent 26%),
+        linear-gradient(180deg, var(--bg-1), var(--bg-2));
+      overscroll-behavior: none;
+    }
+    .app { width: 100vw; height: 100dvh; background: linear-gradient(180deg, rgba(58,39,23,0.98), rgba(22,15,10,0.98)); }
+    .page-scroller { width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; scroll-snap-type: y mandatory; scroll-behavior: smooth; overscroll-behavior-y: contain; }
+    .page { min-height: 100dvh; padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); scroll-snap-align: start; }
+    .page-game { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; }
+    .game-hud { display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 18px; background: rgba(255,248,232,0.08); border: 1px solid var(--panel-border); backdrop-filter: blur(10px); }
+    .hud-title { font-size: 0.92rem; letter-spacing: 0.08em; text-transform: uppercase; color: #ffd998; white-space: nowrap; }
+    .hud-pill { padding: 8px 12px; border-radius: 999px; background: rgba(255,248,232,0.08); border: 1px solid rgba(255,242,216,0.12); font-size: 0.92rem; white-space: nowrap; }
+    .hud-pill strong { margin-left: 6px; font-size: 1.1rem; }
+    .icon-btn, .ghost-btn, .primary-btn { appearance: none; font: inherit; cursor: pointer; touch-action: manipulation; color: var(--text); border-radius: 16px; border: 1px solid rgba(255,242,216,0.14); background: rgba(255,248,232,0.1); }
+    .icon-btn { min-height: 42px; padding: 0 14px; border-radius: 999px; }
+    .game-stage { position: relative; min-height: 0; border-radius: 24px; overflow: hidden; border: 1px solid rgba(255,242,216,0.14); background: rgba(255,244,220,0.08); }
+    canvas { display: block; width: 100%; height: 100%; border-radius: 24px; touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .swipe-hint { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 18px; background: rgba(255,201,112,0.13); border: 1px solid rgba(255,214,143,0.18); color: #ffe8b5; font-size: 0.88rem; line-height: 1.35; }
+    .page-settings { display: grid; align-content: start; gap: 12px; background: linear-gradient(180deg, rgba(39,27,18,0.98), rgba(19,13,10,0.98)); }
+    .settings-card { padding: 14px; border-radius: 22px; background: rgba(255,248,232,0.08); border: 1px solid var(--panel-border); }
+    .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .settings-header h1, .settings-card h2 { margin: 0; font-size: 1.1rem; }
+    .settings-copy { margin: 0; color: var(--muted); line-height: 1.45; font-size: 0.9rem; }
+    .status { padding: 12px 14px; border-radius: 16px; background: rgba(255,248,232,0.07); border: 1px solid rgba(255,242,216,0.1); font-size: 0.92rem; line-height: 1.45; }
+    .status[data-tone="running"] { color: #bdf4d2; }
+    .status[data-tone="gameover"] { color: #ffc8bc; background: rgba(255,98,77,0.11); border-color: rgba(255,122,72,0.24); }
+    .difficulty-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .difficulty-chip { appearance: none; padding: 12px 10px; text-align: left; color: var(--text); background: rgba(255,248,232,0.06); border: 1px solid rgba(255,242,216,0.12); border-radius: 18px; cursor: pointer; touch-action: manipulation; }
+    .difficulty-chip[data-active="true"] { transform: translateY(-1px); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14); }
+    .difficulty-chip[data-difficulty="easy"][data-active="true"] { background: color-mix(in srgb, var(--easy) 28%, rgba(255,248,232,0.08)); }
+    .difficulty-chip[data-difficulty="normal"][data-active="true"] { background: color-mix(in srgb, var(--normal) 28%, rgba(255,248,232,0.08)); }
+    .difficulty-chip[data-difficulty="hardcore"][data-active="true"] { background: color-mix(in srgb, var(--hard) 28%, rgba(255,248,232,0.08)); }
+    .difficulty-chip[data-difficulty="insane"][data-active="true"] { background: color-mix(in srgb, var(--insane) 28%, rgba(255,248,232,0.08)); }
+    .difficulty-chip strong { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 1rem; }
+    .difficulty-chip small { color: var(--muted); font-size: 0.82rem; line-height: 1.35; }
+    .hotkey { display: inline-grid; place-items: center; min-width: 22px; padding: 2px 6px; border-radius: 999px; background: rgba(255,242,216,0.12); color: #ffe09f; font-size: 0.75rem; }
+    .control-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .primary-btn, .ghost-btn { min-height: 62px; padding: 12px 14px; text-align: left; }
+    .primary-btn { background: linear-gradient(180deg, rgba(255,180,84,0.22), rgba(255,130,73,0.16)); border-color: rgba(255,191,115,0.28); }
+    .primary-btn strong, .ghost-btn strong { display: block; margin-bottom: 4px; font-size: 1rem; }
+    .primary-btn span, .ghost-btn span { display: block; color: var(--muted); font-size: 0.82rem; line-height: 1.35; }
+    .rotate-lock { display: none; position: fixed; inset: 0; z-index: 20; place-items: center; padding: 24px; background: rgba(19,13,10,0.96); text-align: center; }
+    .rotate-lock strong { display: block; margin-bottom: 12px; font-size: 1.4rem; }
+    .rotate-lock p { margin: 0; color: var(--muted); line-height: 1.5; }
+    @media (max-width: 980px) { .difficulty-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (orientation: portrait) and (max-width: 900px) { .rotate-lock { display: grid; } }
+    @media (max-width: 620px) {
+      .game-hud { grid-template-columns: 1fr 1fr auto; grid-template-areas: "title difficulty settings" "score score score"; }
+      .hud-title { grid-area: title; font-size: 0.8rem; }
+      .hud-pill[data-kind="difficulty"] { grid-area: difficulty; }
+      .hud-pill[data-kind="score"] { grid-area: score; }
+      .icon-btn { grid-area: settings; }
+      .page-settings { gap: 10px; }
+      .difficulty-grid { grid-template-columns: 1fr; }
+      .control-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (orientation: landscape) and (max-height: 430px) {
+      .page { padding: calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left)); }
+      .game-hud { padding: 8px 10px; }
+      .swipe-hint { padding: 10px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div id="pageScroller" class="page-scroller">
+      <section id="gamePage" class="page page-game">
+        <section class="game-hud" aria-live="polite">
+          <div class="hud-title">Dino Sprint</div>
+          <div class="hud-pill">难度<strong id="activeDifficulty">普通</strong></div>
+          <div class="hud-pill">分数<strong id="score">0</strong></div>
+          <button id="settingsToggle" class="icon-btn" type="button">设置</button>
+        </section>
+        <div class="game-stage">
+          <canvas id="game" width="900" height="360" aria-label="小恐龙闯关游戏画布"></canvas>
+        </div>
+        <section class="swipe-hint">
+          <span>第一页玩游戏，向下滑到第二页看设置和操作；轻触画面会尝试全屏。</span>
+        </section>
+      </section>
+      <section id="settingsPage" class="page page-settings">
+        <section class="settings-card">
+          <div class="settings-header">
+            <h1>游戏设置</h1>
+            <button id="backToGame" class="icon-btn" type="button">返回游戏</button>
+          </div>
+          <p class="settings-copy">这版按照 iPhone 14 Pro 横屏思路：第一页是游戏，第二页是设置，可上下滑动切换。</p>
+        </section>
+        <section class="settings-card">
+          <h2>当前状态</h2>
+          <div id="status" class="status" data-tone="idle">当前难度：普通。上滑回到游戏页开始，或直接点下方按钮。</div>
+        </section>
+        <section class="settings-card">
+          <h2>难度选择</h2>
+          <div class="difficulty-grid">
+            <button class="difficulty-chip" data-difficulty="easy" data-active="false" type="button">
+              <strong>简单 <span class="hotkey">1</span></strong>
+              <small>更慢速度，更长仙人掌间隔，适合热身。</small>
+            </button>
+            <button class="difficulty-chip" data-difficulty="normal" data-active="true" type="button">
+              <strong>普通 <span class="hotkey">2</span></strong>
+              <small>标准节奏，适合日常闯关。</small>
+            </button>
+            <button class="difficulty-chip" data-difficulty="hardcore" data-active="false" type="button">
+              <strong>超困难 <span class="hotkey">3</span></strong>
+              <small>速度和刷新频率更高，容错很低。</small>
+            </button>
+            <button class="difficulty-chip" data-difficulty="insane" data-active="false" type="button">
+              <strong>变态 <span class="hotkey">4</span></strong>
+              <small>几乎不给反应时间，就是来折磨人的。</small>
+            </button>
+          </div>
+        </section>
+        <section class="settings-card">
+          <h2>操作</h2>
+          <div class="control-grid">
+            <button id="jumpButton" class="primary-btn" type="button">
+              <strong>点我跳跃</strong>
+              <span>手机直接点这里，或轻触第一页游戏画面。</span>
+            </button>
+            <button id="restartButton" class="ghost-btn" type="button">
+              <strong>重新开始</strong>
+              <span>失败后重开。</span>
+            </button>
+            <button id="fullscreenButton" class="ghost-btn" type="button">
+              <strong>进入全屏</strong>
+              <span>手动请求全屏。</span>
+            </button>
+          </div>
+        </section>
+      </section>
+    </div>
+  </main>
+  <aside class="rotate-lock" aria-hidden="true">
+    <div>
+      <strong>请横屏游玩</strong>
+      <p>本版本固定横屏设计。把设备横过来后，第一页是游戏，向下滑到第二页是设置。</p>
+    </div>
+  </aside>
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
+    const activeDifficultyEl = document.getElementById("activeDifficulty");
+    const statusEl = document.getElementById("status");
+    const difficultyButtons = [...document.querySelectorAll(".difficulty-chip")];
+    const settingsToggle = document.getElementById("settingsToggle");
+    const backToGame = document.getElementById("backToGame");
+    const jumpButton = document.getElementById("jumpButton");
+    const restartButton = document.getElementById("restartButton");
+    const fullscreenButton = document.getElementById("fullscreenButton");
+    const pageScroller = document.getElementById("pageScroller");
+    const gamePage = document.getElementById("gamePage");
+    const settingsPage = document.getElementById("settingsPage");
+
+    const DIFFICULTIES = {
+      easy: { label: "简单", accent: "#58c987", skyTop: "#dff8ff", skyBottom: "#ffe9b8", sun: "#ffd35a", mountain: "#8fc1a8", mountainShadow: "#6f9c86", groundTop: "#a77d4e", groundBottom: "#6d4527", speed: 280, gravity: 1980, jumpVelocity: -720, scoreUnit: 14, minSpawnDelay: 1.65, maxSpawnDelay: 2.3 },
+      normal: { label: "普通", accent: "#f1b84b", skyTop: "#ffefc7", skyBottom: "#ffcb88", sun: "#ffc547", mountain: "#d0ad7f", mountainShadow: "#b78f63", groundTop: "#9e7045", groundBottom: "#6c4325", speed: 360, gravity: 2100, jumpVelocity: -760, scoreUnit: 14, minSpawnDelay: 1.05, maxSpawnDelay: 1.8 },
+      hardcore: { label: "超困难", accent: "#ff7a48", skyTop: "#ffd7be", skyBottom: "#ff9d63", sun: "#ffad45", mountain: "#b98a6f", mountainShadow: "#925f4d", groundTop: "#8a5632", groundBottom: "#532f1f", speed: 470, gravity: 2260, jumpVelocity: -800, scoreUnit: 14, minSpawnDelay: 0.82, maxSpawnDelay: 1.22 },
+      insane: { label: "变态", accent: "#ff3c8f", skyTop: "#26133c", skyBottom: "#ff7a59", sun: "#ff4d9e", mountain: "#53306f", mountainShadow: "#38204d", groundTop: "#6e2f4f", groundBottom: "#301225", speed: 610, gravity: 2400, jumpVelocity: -850, scoreUnit: 14, minSpawnDelay: 0.56, maxSpawnDelay: 0.9 }
+    };
+
+    const WORLD = { width: canvas.width, height: canvas.height, groundY: 272 };
+    const dino = { x: 112, width: 58, height: 62, y: WORLD.groundY - 62, velocityY: 0, onGround: true };
+    const gameState = { mode: "idle", difficulty: "normal", score: 0, lastTimestamp: 0, distanceAccumulator: 0, spawnTimer: 0, nextSpawnIn: 0, groundOffset: 0 };
+    const obstacles = [];
+
+    function getCurrentDifficulty() { return DIFFICULTIES[gameState.difficulty]; }
+    function randomSpawnDelay() { const d = getCurrentDifficulty(); return d.minSpawnDelay + Math.random() * (d.maxSpawnDelay - d.minSpawnDelay); }
+    function updateStatus(message, tone) { statusEl.textContent = message; statusEl.dataset.tone = tone; }
+    function updateScore() { scoreEl.textContent = String(gameState.score); }
+    function updateDifficultyUI() { const d = getCurrentDifficulty(); activeDifficultyEl.textContent = d.label; difficultyButtons.forEach((btn) => { const active = btn.dataset.difficulty === gameState.difficulty; btn.dataset.active = String(active); btn.setAttribute("aria-pressed", String(active)); }); }
+    function resetDino() { dino.y = WORLD.groundY - dino.height; dino.velocityY = 0; dino.onGround = true; }
+    function resetGame() { gameState.mode = "running"; gameState.score = 0; gameState.distanceAccumulator = 0; gameState.spawnTimer = 0; gameState.nextSpawnIn = randomSpawnDelay(); gameState.groundOffset = 0; gameState.lastTimestamp = 0; obstacles.length = 0; resetDino(); updateScore(); updateStatus(`奔跑中：当前难度 ${getCurrentDifficulty().label}。点第一页画面或下方按钮都能跳。`, "running"); }
+    function setDifficulty(nextDifficulty, restart = true) { if (!DIFFICULTIES[nextDifficulty] || nextDifficulty === gameState.difficulty) return; gameState.difficulty = nextDifficulty; gameState.nextSpawnIn = randomSpawnDelay(); updateDifficultyUI(); if (restart) { gameState.mode = "idle"; gameState.score = 0; gameState.distanceAccumulator = 0; gameState.spawnTimer = 0; gameState.groundOffset = 0; gameState.lastTimestamp = 0; obstacles.length = 0; resetDino(); updateScore(); } updateStatus(`当前难度：${getCurrentDifficulty().label}。回到第一页开始游戏。`, "idle"); render(); }
+    function startGame() { if (gameState.mode === "idle" || gameState.mode === "gameover") resetGame(); }
+    function jump() { if (!dino.onGround || gameState.mode !== "running") return; dino.velocityY = getCurrentDifficulty().jumpVelocity; dino.onGround = false; }
+    function handleDifficultyKey(code) { const map = { Digit1: "easy", Numpad1: "easy", Digit2: "normal", Numpad2: "normal", Digit3: "hardcore", Numpad3: "hardcore", Digit4: "insane", Numpad4: "insane" }; if (!map[code]) return false; setDifficulty(map[code]); return true; }
+    function scrollToSettings() { settingsPage.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    function scrollToGame() { gamePage.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    function handleInput(event) { const isJumpKey = event.code === "Space" || event.code === "ArrowUp"; if (handleDifficultyKey(event.code)) { event.preventDefault(); return; } if (event.code === "KeyR" && gameState.mode === "gameover") { event.preventDefault(); resetGame(); return; } if (isJumpKey) { event.preventDefault(); triggerJump(); } }
+    function isLandscapeMobileViewport() { return window.matchMedia("(orientation: landscape)").matches && window.innerHeight <= 430; }
+    async function maybeEnterFullscreen() { if (!document.fullscreenEnabled || document.fullscreenElement) return; if (!isLandscapeMobileViewport()) return; const target = document.documentElement; const requestFullscreen = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen; if (!requestFullscreen) return; try { await requestFullscreen.call(target); if (screen.orientation && screen.orientation.lock) { screen.orientation.lock("landscape").catch(() => {}); } } catch (error) {} }
+    function triggerJump() { maybeEnterFullscreen(); if (gameState.mode === "idle") { startGame(); requestAnimationFrame(() => { if (gameState.mode === "running") jump(); }); return; } if (gameState.mode === "running") jump(); }
+    function triggerRestart() { maybeEnterFullscreen(); if (gameState.mode === "gameover") resetGame(); }
+    function spawnCactus() { const d = getCurrentDifficulty(); const variant = Math.random() < 0.58 ? "small" : "tall"; const cactusHeight = variant === "small" ? 48 : 72; const cactusWidth = variant === "small" ? 26 : 34; obstacles.push({ x: WORLD.width + 36, y: WORLD.groundY - cactusHeight, width: cactusWidth, height: cactusHeight, variant, accent: d.accent }); }
+    function checkCollision(player, cactus) { const inset = 10; const leftA = player.x + inset; const rightA = player.x + player.width - inset; const topA = player.y + inset; const bottomA = player.y + player.height - inset; const leftB = cactus.x + 4; const rightB = cactus.x + cactus.width - 4; const topB = cactus.y + 4; const bottomB = cactus.y + cactus.height; return rightA > leftB && leftA < rightB && bottomA > topB && topA < bottomB; }
+    function failGame() { gameState.mode = "gameover"; updateStatus(`游戏失败，最终得分 ${gameState.score}，难度 ${getCurrentDifficulty().label}。按 R 或点按钮重开。`, "gameover"); }
+
+    function drawDinoSpriteNormal(d) {
+      ctx.fillStyle = "#203d34";
+      ctx.fillRect(14, 10, 32, 34);
+      ctx.fillRect(30, 0, 20, 18);
+      ctx.fillRect(18, 20, 28, 10);
+      ctx.fillRect(6, 16, 13, 11);
+      ctx.fillRect(18, 44, 8, 18);
+      ctx.fillRect(34, 44, 8, 18);
+      ctx.fillRect(0, 19, 8, 8);
+      ctx.fillStyle = d.accent;
+      ctx.fillRect(13, 26, 32, 6);
+      ctx.fillRect(27, 20, 18, 4);
+      ctx.fillStyle = "#fff5d9";
+      ctx.fillRect(37, 7, 4, 4);
+      ctx.fillStyle = "#182821";
+      ctx.fillRect(18, 52, 12, 4);
+      ctx.fillRect(34, 52, 12, 4);
+    }
+    function drawDinoSpriteGameOver() {
+      ctx.fillStyle = "#1d2f29";
+      ctx.fillRect(12, 22, 36, 28);   // palm
+      ctx.fillRect(26, 4, 12, 38);    // middle finger
+      ctx.fillRect(16, 28, 10, 18);   // ring folded
+      ctx.fillRect(36, 28, 10, 18);   // index folded
+      ctx.fillStyle = "#ff6b6b";
+      ctx.fillRect(26, 0, 12, 8);     // fingertip highlight
+      ctx.fillStyle = "#12201c";
+      ctx.fillRect(18, 50, 10, 12);
+      ctx.fillRect(34, 50, 10, 12);
+    }
+    function drawDino() {
+      const bounce = dino.onGround && gameState.mode === "running" ? Math.sin(gameState.groundOffset * 0.12) * 2 : 0;
+      const drawY = dino.y + bounce;
+      ctx.save();
+      ctx.translate(dino.x, drawY);
+      if (gameState.mode === "gameover") {
+        drawDinoSpriteGameOver();
+      } else {
+        drawDinoSpriteNormal(getCurrentDifficulty());
+      }
+      ctx.restore();
+    }
+
+    function drawBackdrop() {
+      const d = getCurrentDifficulty();
+      const sky = ctx.createLinearGradient(0, 0, 0, WORLD.groundY);
+      sky.addColorStop(0, d.skyTop); sky.addColorStop(1, d.skyBottom);
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.18)"; ctx.beginPath(); ctx.arc(160, 52, 44, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = d.sun; ctx.beginPath(); ctx.arc(756, 74, 32, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = d.mountain;
+      ctx.beginPath(); ctx.moveTo(0, WORLD.groundY); ctx.lineTo(110, 174); ctx.lineTo(220, WORLD.groundY); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(170, WORLD.groundY); ctx.lineTo(330, 156); ctx.lineTo(470, WORLD.groundY); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(430, WORLD.groundY); ctx.lineTo(610, 146); ctx.lineTo(786, WORLD.groundY); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = d.mountainShadow;
+      ctx.beginPath(); ctx.moveTo(0, WORLD.groundY); ctx.lineTo(160, 226); ctx.lineTo(300, WORLD.groundY); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(320, WORLD.groundY); ctx.lineTo(525, 206); ctx.lineTo(710, WORLD.groundY); ctx.closePath(); ctx.fill();
+    }
+    function drawCloud(x, y, scale) { ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); ctx.fillStyle = "rgba(255, 255, 255, 0.52)"; ctx.beginPath(); ctx.arc(0, 0, 16, Math.PI * 0.5, Math.PI * 1.5); ctx.arc(20, -12, 18, Math.PI, Math.PI * 2); ctx.arc(44, -4, 15, Math.PI * 1.5, Math.PI * 0.5); ctx.closePath(); ctx.fill(); ctx.restore(); }
+    function drawGround() { const d = getCurrentDifficulty(); const ground = ctx.createLinearGradient(0, WORLD.groundY - 6, 0, WORLD.height); ground.addColorStop(0, d.groundTop); ground.addColorStop(1, d.groundBottom); ctx.fillStyle = ground; ctx.fillRect(0, WORLD.groundY, WORLD.width, WORLD.height - WORLD.groundY); ctx.fillStyle = "rgba(255, 245, 220, 0.18)"; ctx.fillRect(0, WORLD.groundY - 8, WORLD.width, 8); ctx.strokeStyle = "rgba(59, 33, 13, 0.35)"; ctx.lineWidth = 3; for (let x = -gameState.groundOffset; x < WORLD.width + 64; x += 64) { ctx.beginPath(); ctx.moveTo(x, WORLD.groundY + 18); ctx.lineTo(x + 28, WORLD.groundY + 18); ctx.stroke(); } ctx.strokeStyle = "rgba(255, 232, 187, 0.14)"; for (let x = -gameState.groundOffset * 0.65; x < WORLD.width + 110; x += 110) { ctx.beginPath(); ctx.moveTo(x, WORLD.groundY + 42); ctx.lineTo(x + 46, WORLD.groundY + 42); ctx.stroke(); } }
+    function drawCactus(cactus) { ctx.save(); ctx.translate(cactus.x, cactus.y); const g = ctx.createLinearGradient(0, 0, cactus.width, cactus.height); g.addColorStop(0, "#43af71"); g.addColorStop(1, "#1d6b45"); ctx.fillStyle = g; const trunkWidth = cactus.variant === "small" ? 12 : 16; const armWidth = cactus.variant === "small" ? 8 : 10; const leftArmHeight = cactus.variant === "small" ? 16 : 22; const rightArmHeight = cactus.variant === "small" ? 18 : 24; ctx.fillRect((cactus.width - trunkWidth) / 2, 0, trunkWidth, cactus.height); ctx.fillRect(0, cactus.height * 0.42, armWidth, leftArmHeight); ctx.fillRect(cactus.width - armWidth, cactus.height * 0.28, armWidth, rightArmHeight); ctx.fillStyle = "rgba(255,255,255,0.22)"; ctx.fillRect((cactus.width - trunkWidth) / 2 + 2, 6, 2, cactus.height - 12); ctx.restore(); }
+    function drawDifficultyBadge() { const d = getCurrentDifficulty(); ctx.save(); ctx.fillStyle = "rgba(28, 22, 18, 0.62)"; ctx.fillRect(WORLD.width - 144, 16, 128, 34); ctx.fillStyle = d.accent; ctx.fillRect(WORLD.width - 144, 16, 6, 34); ctx.fillStyle = "#fff8e8"; ctx.font = "600 15px Trebuchet MS"; ctx.fillText(`难度 · ${d.label}`, WORLD.width - 122, 38); ctx.restore(); }
+    function drawOverlay() { if (gameState.mode === "running") return; const d = getCurrentDifficulty(); ctx.save(); ctx.fillStyle = "rgba(18, 10, 4, 0.24)"; ctx.fillRect(0, 0, WORLD.width, WORLD.height); ctx.fillStyle = "rgba(255, 248, 235, 0.92)"; ctx.fillRect(190, 88, 520, 150); ctx.textAlign = "center"; ctx.fillStyle = "#2a2419"; ctx.font = "700 31px Trebuchet MS"; if (gameState.mode === "idle") { ctx.fillText(`${d.label} 模式待命`, WORLD.width / 2, 138); ctx.font = "500 19px Trebuchet MS"; ctx.fillText("横屏第一页开始游戏，下滑第二页改难度", WORLD.width / 2, 174); ctx.fillText("轻触画面或点按钮起跳，撞到仙人掌就失败", WORLD.width / 2, 204); } else { ctx.fillStyle = d.accent; ctx.fillText("游戏失败", WORLD.width / 2, 138); ctx.fillStyle = "#2a2419"; ctx.font = "600 20px Trebuchet MS"; ctx.fillText(`最终得分：${gameState.score} · 当前难度：${d.label}`, WORLD.width / 2, 174); ctx.fillText("回第二页重开，或按 R 立刻重新开始", WORLD.width / 2, 204); } ctx.restore(); }
+    function render() { ctx.clearRect(0, 0, WORLD.width, WORLD.height); drawBackdrop(); drawCloud(155, 92, 1.25); drawCloud(336, 74, 0.88); drawCloud(548, 104, 1.06); drawCloud(706, 126, 0.92); drawGround(); drawDino(); obstacles.forEach(drawCactus); drawDifficultyBadge(); drawOverlay(); }
+    function update(deltaTime) { if (gameState.mode !== "running") return; const d = getCurrentDifficulty(); const distanceDelta = d.speed * deltaTime; gameState.distanceAccumulator += distanceDelta; if (gameState.distanceAccumulator >= d.scoreUnit) { const earned = Math.floor(gameState.distanceAccumulator / d.scoreUnit); gameState.score += earned; gameState.distanceAccumulator -= earned * d.scoreUnit; updateScore(); } gameState.groundOffset = (gameState.groundOffset + distanceDelta) % 64; dino.velocityY += d.gravity * deltaTime; dino.y += dino.velocityY * deltaTime; if (dino.y >= WORLD.groundY - dino.height) { dino.y = WORLD.groundY - dino.height; dino.velocityY = 0; dino.onGround = true; } gameState.spawnTimer += deltaTime; if (gameState.spawnTimer >= gameState.nextSpawnIn) { spawnCactus(); gameState.spawnTimer = 0; gameState.nextSpawnIn = randomSpawnDelay(); } for (let i = obstacles.length - 1; i >= 0; i -= 1) { const cactus = obstacles[i]; cactus.x -= d.speed * deltaTime; if (checkCollision(dino, cactus)) { failGame(); return; } if (cactus.x + cactus.width < -20) obstacles.splice(i, 1); } }
+    function gameLoop(timestamp) { if (!gameState.lastTimestamp) gameState.lastTimestamp = timestamp; const deltaTime = Math.min((timestamp - gameState.lastTimestamp) / 1000, 0.032); gameState.lastTimestamp = timestamp; update(deltaTime); render(); requestAnimationFrame(gameLoop); }
+    difficultyButtons.forEach((btn) => btn.addEventListener("click", () => setDifficulty(btn.dataset.difficulty)));
+    settingsToggle.addEventListener("click", scrollToSettings);
+    backToGame.addEventListener("click", scrollToGame);
+    jumpButton.addEventListener("pointerdown", (e) => { e.preventDefault(); triggerJump(); });
+    restartButton.addEventListener("pointerdown", (e) => { e.preventDefault(); triggerRestart(); });
+    fullscreenButton.addEventListener("pointerdown", (e) => { e.preventDefault(); maybeEnterFullscreen(); });
+    canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); triggerJump(); });
+    window.addEventListener("keydown", handleInput, { passive: false });
+    updateDifficultyUI(); gameState.nextSpawnIn = randomSpawnDelay(); updateScore(); updateStatus("当前难度：普通。第一页开始游戏，下滑第二页改设置。", "idle"); render(); requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
