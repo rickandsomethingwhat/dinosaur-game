@@ -193,8 +193,13 @@
 
     const WORLD = { width: canvas.width, height: canvas.height, groundY: 272 };
     const dino = { x: 112, width: 58, height: 62, y: WORLD.groundY - 62, velocityY: 0, onGround: true };
-    const gameState = { mode: "idle", difficulty: "normal", score: 0, lastTimestamp: 0, distanceAccumulator: 0, spawnTimer: 0, nextSpawnIn: 0, groundOffset: 0 };
+    const gameState = { mode: "idle", difficulty: "normal", score: 0, lastTimestamp: 0, distanceAccumulator: 0, spawnTimer: 0, nextSpawnIn: 0, groundOffset: 0, hiddenEnding: false };
     const obstacles = [];
+
+    // 追逐事件：分数 1000-3000 触发大恐龙追赶，并逐步提速
+    const CHASE_START_SCORE = 1000;
+    const CHASE_END_SCORE = 3000;
+    const bigDino = { x: WORLD.width + 200, y: WORLD.groundY - 90, width: 88, height: 90, active: false };
 
     function getCurrentDifficulty() { return DIFFICULTIES[gameState.difficulty]; }
     function randomSpawnDelay() { const d = getCurrentDifficulty(); return d.minSpawnDelay + Math.random() * (d.maxSpawnDelay - d.minSpawnDelay); }
@@ -202,7 +207,8 @@
     function updateScore() { scoreEl.textContent = String(gameState.score); }
     function updateDifficultyUI() { const d = getCurrentDifficulty(); activeDifficultyEl.textContent = d.label; difficultyButtons.forEach((btn) => { const active = btn.dataset.difficulty === gameState.difficulty; btn.dataset.active = String(active); btn.setAttribute("aria-pressed", String(active)); }); }
     function resetDino() { dino.y = WORLD.groundY - dino.height; dino.velocityY = 0; dino.onGround = true; }
-    function resetGame() { gameState.mode = "running"; gameState.score = 0; gameState.distanceAccumulator = 0; gameState.spawnTimer = 0; gameState.nextSpawnIn = randomSpawnDelay(); gameState.groundOffset = 0; gameState.lastTimestamp = 0; obstacles.length = 0; resetDino(); updateScore(); updateStatus(`奔跑中：当前难度 ${getCurrentDifficulty().label}。点第一页画面或下方按钮都能跳。`, "running"); }
+    function resetChase() { bigDino.active = false; bigDino.x = WORLD.width + 200; }
+    function resetGame() { gameState.mode = "running"; gameState.score = 0; gameState.distanceAccumulator = 0; gameState.spawnTimer = 0; gameState.nextSpawnIn = randomSpawnDelay(); gameState.groundOffset = 0; gameState.lastTimestamp = 0; gameState.hiddenEnding = false; obstacles.length = 0; resetDino(); resetChase(); updateScore(); updateStatus(`奔跑中：当前难度 ${getCurrentDifficulty().label}。点第一页画面或下方按钮都能跳。`, "running"); }
     function setDifficulty(nextDifficulty, restart = true) { if (!DIFFICULTIES[nextDifficulty] || nextDifficulty === gameState.difficulty) return; gameState.difficulty = nextDifficulty; gameState.nextSpawnIn = randomSpawnDelay(); updateDifficultyUI(); if (restart) { gameState.mode = "idle"; gameState.score = 0; gameState.distanceAccumulator = 0; gameState.spawnTimer = 0; gameState.groundOffset = 0; gameState.lastTimestamp = 0; obstacles.length = 0; resetDino(); updateScore(); } updateStatus(`当前难度：${getCurrentDifficulty().label}。回到第一页开始游戏。`, "idle"); render(); }
     function startGame() { if (gameState.mode === "idle" || gameState.mode === "gameover") resetGame(); }
     function jump() { if (!dino.onGround || gameState.mode !== "running") return; dino.velocityY = getCurrentDifficulty().jumpVelocity; dino.onGround = false; }
@@ -216,7 +222,11 @@
     function triggerRestart() { maybeEnterFullscreen(); if (gameState.mode === "gameover") resetGame(); }
     function spawnCactus() { const d = getCurrentDifficulty(); const variant = Math.random() < 0.58 ? "small" : "tall"; const cactusHeight = variant === "small" ? 48 : 72; const cactusWidth = variant === "small" ? 26 : 34; obstacles.push({ x: WORLD.width + 36, y: WORLD.groundY - cactusHeight, width: cactusWidth, height: cactusHeight, variant, accent: d.accent }); }
     function checkCollision(player, cactus) { const inset = 10; const leftA = player.x + inset; const rightA = player.x + player.width - inset; const topA = player.y + inset; const bottomA = player.y + player.height - inset; const leftB = cactus.x + 4; const rightB = cactus.x + cactus.width - 4; const topB = cactus.y + 4; const bottomB = cactus.y + cactus.height; return rightA > leftB && leftA < rightB && bottomA > topB && topA < bottomB; }
-    function failGame() { gameState.mode = "gameover"; updateStatus(`游戏失败，最终得分 ${gameState.score}，难度 ${getCurrentDifficulty().label}。按 R 或点按钮重开。`, "gameover"); }
+    function failGame(hidden = false) {
+      gameState.mode = "gameover";
+      gameState.hiddenEnding = hidden;
+      updateStatus(`游戏失败，最终得分 ${gameState.score}，难度 ${getCurrentDifficulty().label}。按 R 或点按钮重开。`, "gameover");
+    }
 
     function drawDinoSpriteNormal(d) {
       ctx.fillStyle = "#203d34";
@@ -261,6 +271,25 @@
       ctx.restore();
     }
 
+    function drawBigDino() {
+      if (!bigDino.active) return;
+      ctx.save();
+      ctx.translate(bigDino.x, bigDino.y);
+      ctx.fillStyle = "#3a2418";
+      ctx.fillRect(10, 8, 56, 50);
+      ctx.fillRect(30, -4, 28, 22);
+      ctx.fillRect(6, 32, 18, 22);
+      ctx.fillRect(56, 26, 16, 28);
+      ctx.fillRect(22, 52, 14, 24);
+      ctx.fillRect(44, 52, 14, 24);
+      ctx.fillStyle = "#f1b84b";
+      ctx.fillRect(18, 34, 48, 8);
+      ctx.fillRect(36, 26, 20, 6);
+      ctx.fillStyle = "#fff3dc";
+      ctx.fillRect(50, 6, 6, 6);
+      ctx.restore();
+    }
+
     function drawBackdrop() {
       const d = getCurrentDifficulty();
       const sky = ctx.createLinearGradient(0, 0, 0, WORLD.groundY);
@@ -280,9 +309,108 @@
     function drawGround() { const d = getCurrentDifficulty(); const ground = ctx.createLinearGradient(0, WORLD.groundY - 6, 0, WORLD.height); ground.addColorStop(0, d.groundTop); ground.addColorStop(1, d.groundBottom); ctx.fillStyle = ground; ctx.fillRect(0, WORLD.groundY, WORLD.width, WORLD.height - WORLD.groundY); ctx.fillStyle = "rgba(255, 245, 220, 0.18)"; ctx.fillRect(0, WORLD.groundY - 8, WORLD.width, 8); ctx.strokeStyle = "rgba(59, 33, 13, 0.35)"; ctx.lineWidth = 3; for (let x = -gameState.groundOffset; x < WORLD.width + 64; x += 64) { ctx.beginPath(); ctx.moveTo(x, WORLD.groundY + 18); ctx.lineTo(x + 28, WORLD.groundY + 18); ctx.stroke(); } ctx.strokeStyle = "rgba(255, 232, 187, 0.14)"; for (let x = -gameState.groundOffset * 0.65; x < WORLD.width + 110; x += 110) { ctx.beginPath(); ctx.moveTo(x, WORLD.groundY + 42); ctx.lineTo(x + 46, WORLD.groundY + 42); ctx.stroke(); } }
     function drawCactus(cactus) { ctx.save(); ctx.translate(cactus.x, cactus.y); const g = ctx.createLinearGradient(0, 0, cactus.width, cactus.height); g.addColorStop(0, "#43af71"); g.addColorStop(1, "#1d6b45"); ctx.fillStyle = g; const trunkWidth = cactus.variant === "small" ? 12 : 16; const armWidth = cactus.variant === "small" ? 8 : 10; const leftArmHeight = cactus.variant === "small" ? 16 : 22; const rightArmHeight = cactus.variant === "small" ? 18 : 24; ctx.fillRect((cactus.width - trunkWidth) / 2, 0, trunkWidth, cactus.height); ctx.fillRect(0, cactus.height * 0.42, armWidth, leftArmHeight); ctx.fillRect(cactus.width - armWidth, cactus.height * 0.28, armWidth, rightArmHeight); ctx.fillStyle = "rgba(255,255,255,0.22)"; ctx.fillRect((cactus.width - trunkWidth) / 2 + 2, 6, 2, cactus.height - 12); ctx.restore(); }
     function drawDifficultyBadge() { const d = getCurrentDifficulty(); ctx.save(); ctx.fillStyle = "rgba(28, 22, 18, 0.62)"; ctx.fillRect(WORLD.width - 144, 16, 128, 34); ctx.fillStyle = d.accent; ctx.fillRect(WORLD.width - 144, 16, 6, 34); ctx.fillStyle = "#fff8e8"; ctx.font = "600 15px Trebuchet MS"; ctx.fillText(`难度 · ${d.label}`, WORLD.width - 122, 38); ctx.restore(); }
-    function drawOverlay() { if (gameState.mode === "running") return; const d = getCurrentDifficulty(); ctx.save(); ctx.fillStyle = "rgba(18, 10, 4, 0.24)"; ctx.fillRect(0, 0, WORLD.width, WORLD.height); ctx.fillStyle = "rgba(255, 248, 235, 0.92)"; ctx.fillRect(190, 88, 520, 150); ctx.textAlign = "center"; ctx.fillStyle = "#2a2419"; ctx.font = "700 31px Trebuchet MS"; if (gameState.mode === "idle") { ctx.fillText(`${d.label} 模式待命`, WORLD.width / 2, 138); ctx.font = "500 19px Trebuchet MS"; ctx.fillText("横屏第一页开始游戏，下滑第二页改难度", WORLD.width / 2, 174); ctx.fillText("轻触画面或点按钮起跳，撞到仙人掌就失败", WORLD.width / 2, 204); } else { ctx.fillStyle = d.accent; ctx.fillText("游戏失败", WORLD.width / 2, 138); ctx.fillStyle = "#2a2419"; ctx.font = "600 20px Trebuchet MS"; ctx.fillText(`最终得分：${gameState.score} · 当前难度：${d.label}`, WORLD.width / 2, 174); ctx.fillText("回第二页重开，或按 R 立刻重新开始", WORLD.width / 2, 204); } ctx.restore(); }
-    function render() { ctx.clearRect(0, 0, WORLD.width, WORLD.height); drawBackdrop(); drawCloud(155, 92, 1.25); drawCloud(336, 74, 0.88); drawCloud(548, 104, 1.06); drawCloud(706, 126, 0.92); drawGround(); drawDino(); obstacles.forEach(drawCactus); drawDifficultyBadge(); drawOverlay(); }
-    function update(deltaTime) { if (gameState.mode !== "running") return; const d = getCurrentDifficulty(); const distanceDelta = d.speed * deltaTime; gameState.distanceAccumulator += distanceDelta; if (gameState.distanceAccumulator >= d.scoreUnit) { const earned = Math.floor(gameState.distanceAccumulator / d.scoreUnit); gameState.score += earned; gameState.distanceAccumulator -= earned * d.scoreUnit; updateScore(); } gameState.groundOffset = (gameState.groundOffset + distanceDelta) % 64; dino.velocityY += d.gravity * deltaTime; dino.y += dino.velocityY * deltaTime; if (dino.y >= WORLD.groundY - dino.height) { dino.y = WORLD.groundY - dino.height; dino.velocityY = 0; dino.onGround = true; } gameState.spawnTimer += deltaTime; if (gameState.spawnTimer >= gameState.nextSpawnIn) { spawnCactus(); gameState.spawnTimer = 0; gameState.nextSpawnIn = randomSpawnDelay(); } for (let i = obstacles.length - 1; i >= 0; i -= 1) { const cactus = obstacles[i]; cactus.x -= d.speed * deltaTime; if (checkCollision(dino, cactus)) { failGame(); return; } if (cactus.x + cactus.width < -20) obstacles.splice(i, 1); } }
+    function drawOverlay() {
+      if (gameState.mode === "running") return;
+      const d = getCurrentDifficulty();
+      ctx.save();
+      ctx.fillStyle = "rgba(18, 10, 4, 0.24)";
+      ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+      ctx.fillStyle = "rgba(255, 248, 235, 0.92)";
+      ctx.fillRect(190, 88, 520, 150);
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#2a2419";
+      ctx.font = "700 31px Trebuchet MS";
+
+      if (gameState.mode === "idle") {
+        ctx.fillText(`${d.label} 模式待命`, WORLD.width / 2, 138);
+        ctx.font = "500 19px Trebuchet MS";
+        ctx.fillText("横屏第一页开始游戏，下滑第二页改难度", WORLD.width / 2, 174);
+        ctx.fillText("轻触画面或点按钮起跳，撞到仙人掌就失败", WORLD.width / 2, 204);
+      } else if (gameState.hiddenEnding) {
+        ctx.fillStyle = d.accent;
+        ctx.fillText("隐藏结局 · 双中指复仇", WORLD.width / 2, 138);
+        ctx.fillStyle = "#2a2419";
+        ctx.font = "600 20px Trebuchet MS";
+        ctx.fillText(`最终得分：${gameState.score} · 当前难度：${d.label}`, WORLD.width / 2, 174);
+        ctx.fillText("小恐龙对着大恐龙和仙人掌竖起了两只巨大中指", WORLD.width / 2, 204);
+        // 画两个巨型中指
+        const drawFinger = (x) => {
+          ctx.fillStyle = "#1d2f29";
+          ctx.fillRect(x, 170, 48, 120);
+          ctx.fillRect(x + 16, 110, 16, 80);
+          ctx.fillRect(x - 10, 210, 20, 50);
+          ctx.fillRect(x + 38, 200, 20, 60);
+          ctx.fillStyle = "#ff6b6b";
+          ctx.fillRect(x + 16, 100, 16, 18);
+        };
+        drawFinger(WORLD.width / 2 - 120);
+        drawFinger(WORLD.width / 2 + 40);
+      } else {
+        ctx.fillStyle = d.accent;
+        ctx.fillText("游戏失败", WORLD.width / 2, 138);
+        ctx.fillStyle = "#2a2419";
+        ctx.font = "600 20px Trebuchet MS";
+        ctx.fillText(`最终得分：${gameState.score} · 当前难度：${d.label}`, WORLD.width / 2, 174);
+        ctx.fillText("回第二页重开，或按 R 立刻重新开始", WORLD.width / 2, 204);
+      }
+
+      ctx.restore();
+    }
+    function render() { ctx.clearRect(0, 0, WORLD.width, WORLD.height); drawBackdrop(); drawCloud(155, 92, 1.25); drawCloud(336, 74, 0.88); drawCloud(548, 104, 1.06); drawCloud(706, 126, 0.92); drawGround(); drawDino(); drawBigDino(); obstacles.forEach(drawCactus); drawDifficultyBadge(); drawOverlay(); }
+    function update(deltaTime) {
+      if (gameState.mode !== "running") return;
+      const d = getCurrentDifficulty();
+
+      // 追逐期间速度线性提升
+      let speedBoost = 1;
+      if (gameState.score >= CHASE_START_SCORE && gameState.score < CHASE_END_SCORE) {
+        const t = Math.min((gameState.score - CHASE_START_SCORE) / (CHASE_END_SCORE - CHASE_START_SCORE), 1);
+        speedBoost = 1 + 0.4 * t;
+      } else if (gameState.score >= CHASE_END_SCORE) {
+        speedBoost = 1.4;
+      }
+      const effectiveSpeed = d.speed * speedBoost;
+
+      const distanceDelta = effectiveSpeed * deltaTime;
+      gameState.distanceAccumulator += distanceDelta;
+      if (gameState.distanceAccumulator >= d.scoreUnit) {
+        const earned = Math.floor(gameState.distanceAccumulator / d.scoreUnit);
+        gameState.score += earned;
+        gameState.distanceAccumulator -= earned * d.scoreUnit;
+        updateScore();
+      }
+
+      gameState.groundOffset = (gameState.groundOffset + distanceDelta) % 64;
+
+      dino.velocityY += d.gravity * deltaTime;
+      dino.y += dino.velocityY * deltaTime;
+      if (dino.y >= WORLD.groundY - dino.height) { dino.y = WORLD.groundY - dino.height; dino.velocityY = 0; dino.onGround = true; }
+
+      gameState.spawnTimer += deltaTime;
+      if (gameState.spawnTimer >= gameState.nextSpawnIn) { spawnCactus(); gameState.spawnTimer = 0; gameState.nextSpawnIn = randomSpawnDelay(); }
+
+      // 大恐龙追逐逻辑
+      if (!bigDino.active && gameState.score >= CHASE_START_SCORE) {
+        bigDino.active = true;
+        bigDino.x = WORLD.width + 200;
+      }
+      if (bigDino.active) {
+        const chaseSpeed = effectiveSpeed * 0.8;
+        bigDino.x -= chaseSpeed * deltaTime;
+        const targetX = dino.x - 70;
+        if (bigDino.x < targetX) bigDino.x = targetX;
+        if (gameState.score >= CHASE_END_SCORE) {
+          bigDino.active = false;
+        }
+      }
+
+      for (let i = obstacles.length - 1; i >= 0; i -= 1) {
+        const cactus = obstacles[i];
+        cactus.x -= effectiveSpeed * deltaTime;
+        if (checkCollision(dino, cactus)) { failGame(bigDino.active); return; }
+        if (cactus.x + cactus.width < -20) obstacles.splice(i, 1);
+      }
+    }
     function gameLoop(timestamp) { if (!gameState.lastTimestamp) gameState.lastTimestamp = timestamp; const deltaTime = Math.min((timestamp - gameState.lastTimestamp) / 1000, 0.032); gameState.lastTimestamp = timestamp; update(deltaTime); render(); requestAnimationFrame(gameLoop); }
     difficultyButtons.forEach((btn) => btn.addEventListener("click", () => setDifficulty(btn.dataset.difficulty)));
     settingsToggle.addEventListener("click", scrollToSettings);
