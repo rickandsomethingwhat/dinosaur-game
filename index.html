@@ -192,7 +192,7 @@
     };
 
     const WORLD = { width: canvas.width, height: canvas.height, groundY: 272 };
-    const dino = { x: 112, width: 58, height: 62, y: WORLD.groundY - 62, velocityY: 0, onGround: true };
+    const dino = { x: 112, width: 58, height: 62, y: WORLD.groundY - 62, velocityY: 0, onGround: true, isDucking: false };
     const gameState = { mode: "idle", difficulty: "normal", score: 0, lastTimestamp: 0, distanceAccumulator: 0, spawnTimer: 0, nextSpawnIn: 0, groundOffset: 0, hiddenEnding: false };
     const obstacles = [];
 
@@ -200,27 +200,59 @@
     const CHASE_START_SCORE = 1000;
     const CHASE_END_SCORE = 3000;
     const bigDino = { x: WORLD.width + 200, y: WORLD.groundY - 90, width: 88, height: 90, active: false };
+    const birds = [];
+    let birdSpawnTimer = 0;
+    let nextBirdIn = 0;
 
     function getCurrentDifficulty() { return DIFFICULTIES[gameState.difficulty]; }
     function randomSpawnDelay() { const d = getCurrentDifficulty(); return d.minSpawnDelay + Math.random() * (d.maxSpawnDelay - d.minSpawnDelay); }
     function updateStatus(message, tone) { statusEl.textContent = message; statusEl.dataset.tone = tone; }
     function updateScore() { scoreEl.textContent = String(gameState.score); }
     function updateDifficultyUI() { const d = getCurrentDifficulty(); activeDifficultyEl.textContent = d.label; difficultyButtons.forEach((btn) => { const active = btn.dataset.difficulty === gameState.difficulty; btn.dataset.active = String(active); btn.setAttribute("aria-pressed", String(active)); }); }
-    function resetDino() { dino.y = WORLD.groundY - dino.height; dino.velocityY = 0; dino.onGround = true; }
+    function resetDino() {
+      dino.isDucking = false;
+      dino.height = 62;
+      dino.y = WORLD.groundY - dino.height;
+      dino.velocityY = 0;
+      dino.onGround = true;
+    }
     function resetChase() { bigDino.active = false; bigDino.x = WORLD.width + 200; }
-    function resetGame() { gameState.mode = "running"; gameState.score = 0; gameState.distanceAccumulator = 0; gameState.spawnTimer = 0; gameState.nextSpawnIn = randomSpawnDelay(); gameState.groundOffset = 0; gameState.lastTimestamp = 0; gameState.hiddenEnding = false; obstacles.length = 0; resetDino(); resetChase(); updateScore(); updateStatus(`奔跑中：当前难度 ${getCurrentDifficulty().label}。点第一页画面或下方按钮都能跳。`, "running"); }
+    function resetBirds() { birds.length = 0; birdSpawnTimer = 0; nextBirdIn = 0; }
+    function resetGame() { gameState.mode = "running"; gameState.score = 0; gameState.distanceAccumulator = 0; gameState.spawnTimer = 0; gameState.nextSpawnIn = randomSpawnDelay(); gameState.groundOffset = 0; gameState.lastTimestamp = 0; gameState.hiddenEnding = false; obstacles.length = 0; resetDino(); resetChase(); resetBirds(); updateScore(); updateStatus(`奔跑中：当前难度 ${getCurrentDifficulty().label}。点第一页画面或下方按钮都能跳。`, "running"); }
     function setDifficulty(nextDifficulty, restart = true) { if (!DIFFICULTIES[nextDifficulty] || nextDifficulty === gameState.difficulty) return; gameState.difficulty = nextDifficulty; gameState.nextSpawnIn = randomSpawnDelay(); updateDifficultyUI(); if (restart) { gameState.mode = "idle"; gameState.score = 0; gameState.distanceAccumulator = 0; gameState.spawnTimer = 0; gameState.groundOffset = 0; gameState.lastTimestamp = 0; obstacles.length = 0; resetDino(); updateScore(); } updateStatus(`当前难度：${getCurrentDifficulty().label}。回到第一页开始游戏。`, "idle"); render(); }
     function startGame() { if (gameState.mode === "idle" || gameState.mode === "gameover") resetGame(); }
     function jump() { if (!dino.onGround || gameState.mode !== "running") return; dino.velocityY = getCurrentDifficulty().jumpVelocity; dino.onGround = false; }
     function handleDifficultyKey(code) { const map = { Digit1: "easy", Numpad1: "easy", Digit2: "normal", Numpad2: "normal", Digit3: "hardcore", Numpad3: "hardcore", Digit4: "insane", Numpad4: "insane" }; if (!map[code]) return false; setDifficulty(map[code]); return true; }
     function scrollToSettings() { settingsPage.scrollIntoView({ behavior: "smooth", block: "start" }); }
     function scrollToGame() { gamePage.scrollIntoView({ behavior: "smooth", block: "start" }); }
-    function handleInput(event) { const isJumpKey = event.code === "Space" || event.code === "ArrowUp"; if (handleDifficultyKey(event.code)) { event.preventDefault(); return; } if (event.code === "KeyR" && gameState.mode === "gameover") { event.preventDefault(); resetGame(); return; } if (isJumpKey) { event.preventDefault(); triggerJump(); } }
+    function crouchStart() { if (gameState.mode !== "running") return; dino.isDucking = true; dino.height = 38; dino.y = WORLD.groundY - dino.height; }
+    function crouchEnd() { if (gameState.mode !== "running") return; dino.isDucking = false; dino.height = 62; dino.y = WORLD.groundY - dino.height; }
+
+    function handleInput(event) {
+      const isJumpKey = event.code === "Space" || event.code === "ArrowUp";
+      const isDuckKey = event.code === "ArrowDown";
+      if (handleDifficultyKey(event.code)) { event.preventDefault(); return; }
+      if (event.code === "KeyR" && gameState.mode === "gameover") { event.preventDefault(); resetGame(); return; }
+      if (isJumpKey) { event.preventDefault(); triggerJump(); }
+      if (isDuckKey) { event.preventDefault(); crouchStart(); }
+    }
+    window.addEventListener("keyup", (event) => {
+      if (event.code === "ArrowDown") crouchEnd();
+    }, { passive: false });
     function isLandscapeMobileViewport() { return window.matchMedia("(orientation: landscape)").matches && window.innerHeight <= 430; }
     async function maybeEnterFullscreen() { if (!document.fullscreenEnabled || document.fullscreenElement) return; if (!isLandscapeMobileViewport()) return; const target = document.documentElement; const requestFullscreen = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen; if (!requestFullscreen) return; try { await requestFullscreen.call(target); if (screen.orientation && screen.orientation.lock) { screen.orientation.lock("landscape").catch(() => {}); } } catch (error) {} }
     function triggerJump() { maybeEnterFullscreen(); if (gameState.mode === "idle") { startGame(); requestAnimationFrame(() => { if (gameState.mode === "running") jump(); }); return; } if (gameState.mode === "running") jump(); }
     function triggerRestart() { maybeEnterFullscreen(); if (gameState.mode === "gameover") resetGame(); }
+    function triggerCrouchSwipe() { crouchStart(); setTimeout(crouchEnd, 600); }
     function spawnCactus() { const d = getCurrentDifficulty(); const variant = Math.random() < 0.58 ? "small" : "tall"; const cactusHeight = variant === "small" ? 48 : 72; const cactusWidth = variant === "small" ? 26 : 34; obstacles.push({ x: WORLD.width + 36, y: WORLD.groundY - cactusHeight, width: cactusWidth, height: cactusHeight, variant, accent: d.accent }); }
+    function spawnBird() {
+      const d = getCurrentDifficulty();
+      const height = 26 + Math.random() * 8;
+      const width = 40 + Math.random() * 10;
+      // 下移飞行高度区间：原本 100~140 上空，改为约 70~110 上空
+      const y = WORLD.groundY - 110 - Math.random() * 40;
+      birds.push({ x: WORLD.width + 20, y, width, height, speed: d.speed * (1.05 + Math.random() * 0.25) });
+    }
     function checkCollision(player, cactus) { const inset = 10; const leftA = player.x + inset; const rightA = player.x + player.width - inset; const topA = player.y + inset; const bottomA = player.y + player.height - inset; const leftB = cactus.x + 4; const rightB = cactus.x + cactus.width - 4; const topB = cactus.y + 4; const bottomB = cactus.y + cactus.height; return rightA > leftB && leftA < rightB && bottomA > topB && topA < bottomB; }
     function failGame(hidden = false) {
       gameState.mode = "gameover";
@@ -266,8 +298,22 @@
       if (gameState.mode === "gameover") {
         drawDinoSpriteGameOver();
       } else {
+        ctx.save();
+        if (dino.isDucking) ctx.scale(1, 0.7);
         drawDinoSpriteNormal(getCurrentDifficulty());
+        ctx.restore();
       }
+      ctx.restore();
+    }
+
+    function drawBird(bird) {
+      ctx.save();
+      ctx.translate(bird.x, bird.y);
+      ctx.fillStyle = "#2f3e4f";
+      ctx.fillRect(0, 8, bird.width, bird.height - 8);
+      ctx.fillRect(bird.width * 0.4, 0, bird.width * 0.3, 12);
+      ctx.fillStyle = "#f1b84b";
+      ctx.fillRect(bird.width - 8, bird.height * 0.3, 6, 6);
       ctx.restore();
     }
 
@@ -356,7 +402,7 @@
 
       ctx.restore();
     }
-    function render() { ctx.clearRect(0, 0, WORLD.width, WORLD.height); drawBackdrop(); drawCloud(155, 92, 1.25); drawCloud(336, 74, 0.88); drawCloud(548, 104, 1.06); drawCloud(706, 126, 0.92); drawGround(); drawDino(); drawBigDino(); obstacles.forEach(drawCactus); drawDifficultyBadge(); drawOverlay(); }
+    function render() { ctx.clearRect(0, 0, WORLD.width, WORLD.height); drawBackdrop(); drawCloud(155, 92, 1.25); drawCloud(336, 74, 0.88); drawCloud(548, 104, 1.06); drawCloud(706, 126, 0.92); drawGround(); drawDino(); drawBigDino(); birds.forEach(drawBird); obstacles.forEach(drawCactus); drawDifficultyBadge(); drawOverlay(); }
     function update(deltaTime) {
       if (gameState.mode !== "running") return;
       const d = getCurrentDifficulty();
@@ -404,11 +450,38 @@
         }
       }
 
+      // 飞鸟刷新：仅在未被大恐龙追逐时出现
+      if (!bigDino.active) {
+        birdSpawnTimer += deltaTime;
+        if (nextBirdIn === 0) nextBirdIn = 3 + Math.random() * 13; // 3-16 秒
+        if (birdSpawnTimer >= nextBirdIn) {
+          spawnBird();
+          birdSpawnTimer = 0;
+          nextBirdIn = 3 + Math.random() * 13;
+        }
+      } else {
+        birds.length = 0;
+        birdSpawnTimer = 0;
+        nextBirdIn = 0;
+      }
+
       for (let i = obstacles.length - 1; i >= 0; i -= 1) {
         const cactus = obstacles[i];
         cactus.x -= effectiveSpeed * deltaTime;
         if (checkCollision(dino, cactus)) { failGame(bigDino.active); return; }
         if (cactus.x + cactus.width < -20) obstacles.splice(i, 1);
+      }
+
+      for (let i = birds.length - 1; i >= 0; i -= 1) {
+        const bird = birds[i];
+        bird.x -= bird.speed * deltaTime;
+        const collide = !dino.isDucking &&
+          dino.x + dino.width > bird.x + 6 &&
+          dino.x + 10 < bird.x + bird.width - 6 &&
+          dino.y + 10 < bird.y + bird.height &&
+          dino.y + dino.height - 6 > bird.y;
+        if (collide) { failGame(); return; }
+        if (bird.x + bird.width < -30) birds.splice(i, 1);
       }
     }
     function gameLoop(timestamp) { if (!gameState.lastTimestamp) gameState.lastTimestamp = timestamp; const deltaTime = Math.min((timestamp - gameState.lastTimestamp) / 1000, 0.032); gameState.lastTimestamp = timestamp; update(deltaTime); render(); requestAnimationFrame(gameLoop); }
@@ -419,6 +492,14 @@
     restartButton.addEventListener("pointerdown", (e) => { e.preventDefault(); triggerRestart(); });
     fullscreenButton.addEventListener("pointerdown", (e) => { e.preventDefault(); maybeEnterFullscreen(); });
     canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); triggerJump(); });
+    let swipeStartY = null;
+    canvas.addEventListener("pointerdown", (e) => { swipeStartY = e.clientY; });
+    canvas.addEventListener("pointerup", (e) => {
+      if (swipeStartY !== null && e.clientY - swipeStartY > 30) {
+        triggerCrouchSwipe();
+      }
+      swipeStartY = null;
+    });
     window.addEventListener("keydown", handleInput, { passive: false });
     updateDifficultyUI(); gameState.nextSpawnIn = randomSpawnDelay(); updateScore(); updateStatus("当前难度：普通。第一页开始游戏，下滑第二页改设置。", "idle"); render(); requestAnimationFrame(gameLoop);
   </script>
